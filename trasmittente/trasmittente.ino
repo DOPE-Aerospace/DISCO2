@@ -1,13 +1,10 @@
-// Arduino9x_RX
-// -*- mode: C++ -*-
-// Example sketch showing how to create a simple messaging client (receiver)
-// with the RH_RF95 class. RH_RF95 class does not provide for addressing or
-// reliability, so you should only use RH_RF95 if you do not need the higher
-// level messaging abilities.
-// It is designed to work with the other example Arduino9x_TX
-
 #include <SPI.h>
 #include <RH_RF95.h>
+
+//#include <TinyGPS++.h>
+//#include <MPU6050_light.h>
+//#include <Adafruit_Sensor.h>
+//#include "Adafruit_BMP3XX.h"
 
 #include "log_lib.h"
 #include "config.h"
@@ -16,27 +13,47 @@
 #define RFM95_RST 3
 #define RFM95_INT 4
 
-// Change to 434.0 or other frequency, must match RX's freq!
+// Frequency
 #define RF95_FREQ 868.0
-
 // Singleton instance of the radio driver
 RH_RF95 rf95(RFM95_CS, RFM95_INT);
 
-// Blinky on receipt
+// Blink on receipt
 #define LED LED_BUILTIN
 
+//Flight Globals
+static const unsigned long FlightBaud = 2400;
+
+//Logger Globals
 MessageLogger info_logger;
+MessageLogger flight_logger;
+
+//Adding a new timer is simple, add it before the last enum.
+enum timer
+{
+	NUMBER_OF_JOBS //THIS HAS TO BE THE LAST ENUM
+};
+
+unsigned long saved_times[NUMBER_OF_JOBS] = {};
+
+template<typename F>
+void if_time_expired(timer job, unsigned long delay, F fn)
+{
+	if (millis() - saved_times[job] > delay)
+  {
+		fn();
+		saved_times[job] = millis();
+	}
+}
 
 void setup() 
 {
-  pinMode(LED, OUTPUT);     
-  pinMode(RFM95_RST, OUTPUT);
-  digitalWrite(RFM95_RST, HIGH);
-  digitalWrite(LED, HIGH);
+	pinMode(LED, OUTPUT);
+	digitalWrite(LED, HIGH);
 	
 	Serial.begin(9600);
 	unsigned long saved_time = millis();
-	while (!Serial) 	//this empty while is intentional, sometimes serial connection is not established immediately, but we need it so we wait...
+	while (!Serial)
 	{
 		if (saved_time+1000u < millis()) //after onesecond 
     	break; 
@@ -61,76 +78,90 @@ void setup()
 			if (!make_dir(log_folder_name)) 
     		{
 				Serial.println(F("ERROR_FILE3: Can't create directory."));
+				abort_blink(1);
 			}
 
 			created = true;	
 			Serial.println("Created new folder as: " + log_folder_name);
 		}
     	else //else we try again with log_(n+1).txt
+		{
 			++n;
+		}
 	}
 
 	info_logger = MessageLogger(log_folder_name + "/info", "message");
+	flight_logger = MessageLogger(log_folder_name + "/flight", "text");
 
-  info_logger.record_event("Battery status is: " + String(batteryStatus()) + " volts");
-  info_logger.record_event("Arduino LoRa RX Test!");
-  
-  // manual reset
-  digitalWrite(RFM95_RST, LOW);
-  delay(10);
-  digitalWrite(RFM95_RST, HIGH);
-  delay(10);
+	//=======
+	// ANTENNA
+	//=======
+	
+	info_logger.record_event("Arduino LoRa RX Test!");
 
-  while (!rf95.init()) {
-    info_logger.record_event("LoRa radio init failed");
-    while(42);
-  }
-  info_logger.record_event("LoRa radio init OK!");
+	// manual reset
+	pinMode(RFM95_RST, OUTPUT);
+	digitalWrite(RFM95_RST, HIGH);
+	digitalWrite(RFM95_RST, LOW);
+	delay(10);
+	digitalWrite(RFM95_RST, HIGH);
+	delay(10);
 
-  // Defaults after init are 434.0MHz, modulation GFSK_Rb250Fd250, +13dbM
-  if (!rf95.setFrequency(RF95_FREQ)) {
-    info_logger.record_event("setFrequency failed");
-    while(42);
-  }
-  info_logger.record_event("Set Freq to: " + String(RF95_FREQ));
+	if(!rf95.init()) {
+		info_logger.record_event("LoRa radio init failed");
+		abort_blink(2);
+	}
+	info_logger.record_event("LoRa radio init OK!");
 
-  // Defaults after init are 434.0MHz, 13dBm, Bw = 125 kHz, Cr = 4/5, Sf = 128chips/symbol, CRC on
+	// Defaults after init are 434.0MHz, modulation GFSK_Rb250Fd250, +13dbM
+	if(!rf95.setFrequency(RF95_FREQ)){
+		info_logger.record_event("setFrequency failed");
+		abort_blink(3);
+	}
+	info_logger.record_event("Set Freq to: " + String(RF95_FREQ));
 
-  // The default transmitter power is 13dBm, using PA_BOOST.
-  // If you are using RFM95/96/97/98 modules which uses the PA_BOOST transmitter pin, then 
-  // you can set transmitter powers from 5 to 23 dBm:
-  rf95.setTxPower(23, false);
+	// Defaults after init are 434.0MHz, 13dBm, Bw = 125 kHz, Cr = 4/5, Sf = 128chips/symbol, CRC on
+
+	// The default transmitter power is 13dBm, using PA_BOOST.
+	// If you are using RFM95/96/97/98 modules which uses the PA_BOOST transmitter pin, then 
+	// you can set transmitter powers from 5 to 23 dBm:
+	rf95.setTxPower(23, false);
+
+	//=======
+	// FLIGHT
+	//=======
+	info_logger.record_event("Connecting flight controller serial...");
+	Serial1.begin(FlightBaud);
+	saved_time = millis();
+	while (!Serial)
+	{
+		if (saved_time+1000u < millis()){ //after onesecond 
+			info_logger.record_event("Flight controller connection failed");
+			abort_blink(4);
+		}
+	}
+	
+	//===========
+	//   Misc
+	//===========
+	info_logger.record_event("Battery status is: " + String(batteryStatus()) + " volts");
+	info_logger.record_event("Setup finished.");
 
 }
 
 void loop()
 {
-  if (rf95.available())
-  {
-    // Should be a message for us now   
-    uint8_t buf[RH_RF95_MAX_MESSAGE_LEN];
-    uint8_t len = sizeof(buf);
-    
-    if (rf95.recv(buf, &len))
-    {
-      digitalWrite(LED, LOW);
-      //RH_RF95::printBuffer("Received: ", buf, len);
-      //Serial.print("Got: ");
-      //Serial.println((char*)buf);
-      //Serial.print("RSSI: ");
-      info_logger.record_event(String(rf95.lastRssi()) + " " + String(rf95.lastSNR()));
-      
-      // Send a reply
-      uint8_t data[] = "And hello back to you";
-	  delay(10);
-      rf95.send(data, sizeof(data));
-      rf95.waitPacketSent();
-      //Serial.println("Sent a reply");
-      digitalWrite(LED, HIGH);
-    }
-    else
-    {
-      info_logger.record_event("Receive failed");
-    }
-  }
+	
+	while(Serial1.available()){
+		digitalWrite(LED_BUILTIN, LOW);
+		char r = Serial1.read();
+		String event = String(r);
+		flight_logger.record_event(event);
+		if(rf95.available()){
+			rf95.send(reinterpret_cast<const uint8_t*>(event.c_str()), event.length());
+			rf95.waitPacketSent();
+		}
+		digitalWrite(LED_BUILTIN, HIGH);
+	}
+
 }

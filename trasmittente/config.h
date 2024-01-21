@@ -8,7 +8,7 @@
 //----------------
 
 //This define is for general LED usage.
-//#define USE_LED
+#define USE_LED
 
 //If you have a RGB led connected this will indicate status signals with color!
 //#define USE_RGB
@@ -57,3 +57,8 @@
 //	GPS Config
 //--------------
 #define GPS_DELAY 1000
+
+//--------------
+//	Flight Config
+//--------------
+#define FLIGHT_DELAY 1000

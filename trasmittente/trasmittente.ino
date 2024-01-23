@@ -177,7 +177,7 @@ void loop()
 {
 
 	if(Serial1.find("$T")){
-		digitalWrite(LED_BUILTIN, LOW);
+		digitalWrite(LED, LOW);
 
 		Serial1.readBytes(inputbuffer + 2, 1);
 		int packet_lenght = lenght_payload(inputbuffer[2]);
@@ -196,7 +196,7 @@ void loop()
 		if(Serial1.available() > 10){
 			Serial.println(Serial1.available());
 		}
-		digitalWrite(LED_BUILTIN, HIGH);
+		digitalWrite(LED, HIGH);
 	}
 
 }

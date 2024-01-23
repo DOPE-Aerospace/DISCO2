@@ -23,10 +23,11 @@ RH_RF95 rf95(RFM95_CS, RFM95_INT);
 
 //Flight Globals
 static const unsigned long FlightBaud = 2400;
+static char inputbuffer[18] = {}; // Max possible lenght of LTM packet
 
 //Logger Globals
 MessageLogger info_logger;
-MessageLogger flight_logger;
+Logger flight_logger;
 
 //Adding a new timer is simple, add it before the last enum.
 enum timer
@@ -43,6 +44,27 @@ void if_time_expired(timer job, unsigned long delay, F fn)
   {
 		fn();
 		saved_times[job] = millis();
+	}
+}
+
+int lenght_payload(char function_byte){
+	switch(function_byte){
+		case 'G':
+			return 14;
+		case 'A':
+			return 6;
+		case 'S':
+			return 7;
+		case 'O':
+			return 14;
+		case 'N':
+			return 6;
+		case 'X':
+			return 6;
+		case 'T': // This type of packet is not used by INAV, but it's still part of LTM.
+			return 12;
+		default:
+			return -1;
 	}
 }
 
@@ -91,7 +113,7 @@ void setup()
 	}
 
 	info_logger = MessageLogger(log_folder_name + "/info", "message");
-	flight_logger = MessageLogger(log_folder_name + "/flight", "text");
+	flight_logger = Logger(log_folder_name + "/flight", "LTM");
 
 	//=======
 	// ANTENNA
@@ -124,8 +146,8 @@ void setup()
 
 	// The default transmitter power is 13dBm, using PA_BOOST.
 	// If you are using RFM95/96/97/98 modules which uses the PA_BOOST transmitter pin, then 
-	// you can set transmitter powers from 5 to 23 dBm:
-	rf95.setTxPower(23, false);
+	// you can set transmitter powers from 2 to 20 dBm:
+	rf95.setTxPower(20, false);
 
 	//=======
 	// FLIGHT
@@ -133,13 +155,15 @@ void setup()
 	info_logger.record_event("Connecting flight controller serial...");
 	Serial1.begin(FlightBaud);
 	saved_time = millis();
-	while (!Serial)
+	while (!Serial1)
 	{
 		if (saved_time+1000u < millis()){ //after onesecond 
 			info_logger.record_event("Flight controller connection failed");
 			abort_blink(4);
 		}
 	}
+	inputbuffer[0] = '$';
+	inputbuffer[1] = 'T';
 	
 	//===========
 	//   Misc
@@ -151,15 +175,26 @@ void setup()
 
 void loop()
 {
-	
-	while(Serial1.available()){
+
+	if(Serial1.find("$T")){
 		digitalWrite(LED_BUILTIN, LOW);
-		char r = Serial1.read();
-		String event = String(r);
-		flight_logger.record_event(event);
-		if(rf95.available()){
-			rf95.send(reinterpret_cast<const uint8_t*>(event.c_str()), event.length());
-			rf95.waitPacketSent();
+
+		Serial1.readBytes(inputbuffer + 2, 1);
+		int packet_lenght = lenght_payload(inputbuffer[2]);
+
+		if(packet_lenght != -1){
+
+			packet_lenght += 1;
+			size_t read = Serial1.readBytes(inputbuffer + 3, packet_lenght);
+
+			packet_lenght += 3;
+			rf95.send(reinterpret_cast<const uint8_t*>(inputbuffer), packet_lenght);
+			flight_logger.record_event(reinterpret_cast<const uint8_t*>(inputbuffer), packet_lenght);
+
+		}
+
+		if(Serial1.available() > 10){
+			Serial.println(Serial1.available());
 		}
 		digitalWrite(LED_BUILTIN, HIGH);
 	}

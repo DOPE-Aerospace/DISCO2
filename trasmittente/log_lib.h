@@ -22,17 +22,21 @@ public:
 	Logger(const String& _job_name, const String& _catagories);
 	
 	void record_event(const String& text);
+	void record_event(const char* text);
 
 };
 
 class MessageLogger : public Logger
 {
 
+	void call_base_record_event(const String& text);
+
 public:
 
 	using Logger::Logger;
 
 	void record_event(const String& text);
+	void record_event(const char* text);
 
 };
 

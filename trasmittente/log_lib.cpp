@@ -67,11 +67,10 @@ void Logger::create_log()
 	#endif
 }
 
-
-void Logger::record_event(const String& text) 
+void Logger::record_event(const String& text)
 {
-	#ifdef DO_LOGGING
 	//this is the logger function, after creating a log file we can use this to append new log entries onto the file.
+	#ifdef DO_LOGGING
 	String text_to_write = String(millis()) + ", " + text;
 	#ifdef FAKE_SD
 	Serial.println(text_to_write);
@@ -82,8 +81,38 @@ void Logger::record_event(const String& text)
 	#endif
 }
 
-void MessageLogger::record_event(const String& text) 
+void Logger::record_event(const char* text)
+{
+	//this is the logger function, after creating a log file we can use this to append new log entries onto the file.
+	#ifdef DO_LOGGING
+	String text_to_write = String(millis()) + ", " + text;
+	#ifdef FAKE_SD
+	Serial.println(text_to_write);
+	#else
+	file.println(text_to_write);
+	file.flush();
+	#endif
+	#endif
+}
+
+void MessageLogger::call_base_record_event(const String& text)
+{
+	static const String delimiter("\"");
+	Logger::record_event(delimiter + text + delimiter);
+}
+
+void MessageLogger::record_event(const String& text)
 {
 	Serial.println(text);
-	Logger::record_event("\"" + text + "\"");
+	#ifdef DO_LOGGING
+	call_base_record_event(text);
+	#endif
+}
+
+void MessageLogger::record_event(const char* text)
+{
+	Serial.println(text);
+	#ifdef DO_LOGGING
+	call_base_record_event(text);
+	#endif
 }

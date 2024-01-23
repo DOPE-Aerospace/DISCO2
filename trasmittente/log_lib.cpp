@@ -95,6 +95,22 @@ void Logger::record_event(const char* text)
 	#endif
 }
 
+void Logger::record_event(const uint8_t* text, size_t lenght)
+{
+	#ifdef DO_LOGGING
+	#ifdef FAKE_SD
+	Serial.print(String(millis()) + ", ");
+	Serial.write(text, lenght);
+	Serial.print("\n");
+	#else
+	file.print(String(millis()) + ", ");
+	file.write(text, lenght);
+	file.print("\n");
+	file.flush();
+	#endif
+	#endif
+}
+
 void MessageLogger::call_base_record_event(const String& text)
 {
 	static const String delimiter("\"");

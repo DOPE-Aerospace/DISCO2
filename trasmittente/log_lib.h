@@ -23,6 +23,7 @@ public:
 	
 	void record_event(const String& text);
 	void record_event(const char* text);
+	void record_event(const uint8_t* text, size_t lenght);
 
 };
 

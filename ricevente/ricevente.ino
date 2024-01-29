@@ -20,7 +20,7 @@ void setup()
 	pinMode(LED, OUTPUT);
 	digitalWrite(LED, HIGH);
 
-	Serial.begin(9600);
+	Serial.begin(115200);
 	unsigned long saved_time = millis();
 	while(!Serial)
 	{

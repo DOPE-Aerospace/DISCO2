@@ -22,9 +22,9 @@ RH_RF95 rf95(RFM95_CS, RFM95_INT);
 #define LED LED_BUILTIN
 
 //Flight Globals
-static const unsigned long FlightBaud = 2400;
-static char requestbuffer[50] = {}; // 50 is just for testing, a MSP packet may be longer
-static char responsebuffer[50] = {}; // 50 is just for testing, a MSP packet may be longer
+static const unsigned long FlightBaud = 115200;
+static char requestbuffer[RH_RF95_MAX_MESSAGE_LEN] = {};
+static char responsebuffer[RH_RF95_MAX_MESSAGE_LEN] = {};
 
 //Logger Globals
 MessageLogger info_logger;
@@ -123,7 +123,6 @@ void setup()
 		}
 	}
 	responsebuffer[0] = '$';
-	responsebuffer[1] = 'X';
 	
 	//===========
 	//   Misc
@@ -139,21 +138,64 @@ void loop()
 	rf95.waitAvailable();
 	digitalWrite(LED, LOW);
 
-	uint8_t received = sizeof(requestbuffer);
-	rf95.recv(reinterpret_cast<uint8_t*>(requestbuffer), &received);
+	uint8_t received = {};
+	do {
+		rf95.recv(reinterpret_cast<uint8_t*>(requestbuffer), &received);
+		Serial1.write(requestbuffer, received);
+	} while(received == RH_RF95_MAX_MESSAGE_LEN);
 
-	Serial1.write(requestbuffer, received);
+	int first_byte = {};
+	while((first_byte = Serial1.read()) != '$'){
+		if(first_byte == -1){
+			digitalWrite(LED, LOW);
+			return;
+		}
+	}
 
-	if(Serial1.find("$X")){
+	if((responsebuffer[1] = Serial1.read()) == 'X'){
 
 		Serial1.readBytes(responsebuffer + 2, 6);
-		int payload_lenght = responsebuffer[6] + (responsebuffer[7] * 256);
+		int response_lenght = 8 + responsebuffer[6] + (responsebuffer[7] * 256) + 1; //+1 per il byte di controllo
 
-		size_t read = Serial1.readBytes(responsebuffer + 8, payload_lenght + 1); //+1 per il controllo errori
+		if(response_lenght >= RH_RF95_MAX_MESSAGE_LEN){
+			Serial1.readBytes(responsebuffer + 8, RH_RF95_MAX_MESSAGE_LEN - 8);
+			rf95.send(reinterpret_cast<const uint8_t*>(responsebuffer), RH_RF95_MAX_MESSAGE_LEN);
+			response_lenght -= RH_RF95_MAX_MESSAGE_LEN;
+			while(response_lenght >= RH_RF95_MAX_MESSAGE_LEN){
+				Serial1.readBytes(responsebuffer, RH_RF95_MAX_MESSAGE_LEN);
+				rf95.send(reinterpret_cast<const uint8_t*>(responsebuffer), RH_RF95_MAX_MESSAGE_LEN);
+				response_lenght -= RH_RF95_MAX_MESSAGE_LEN;
+			}
+			Serial1.readBytes(responsebuffer, response_lenght);
+			rf95.send(reinterpret_cast<const uint8_t*>(responsebuffer), response_lenght);
+		} else {
+			Serial1.readBytes(responsebuffer + 8, response_lenght - 8);
+			rf95.send(reinterpret_cast<const uint8_t*>(responsebuffer), response_lenght);
+		}
 
-		rf95.send(reinterpret_cast<const uint8_t*>(responsebuffer), 8 + payload_lenght + 1);
+	} else if(responsebuffer[1] == 'M'){
 
-		digitalWrite(LED, HIGH);
+		Serial1.readBytes(responsebuffer + 2, 3);
+		int response_lenght = 5 + responsebuffer[3] + 1; //+1 per il byte di controllo
+
+		if(response_lenght >= RH_RF95_MAX_MESSAGE_LEN){
+			Serial1.readBytes(responsebuffer + 5, RH_RF95_MAX_MESSAGE_LEN - 5);
+			rf95.send(reinterpret_cast<const uint8_t*>(responsebuffer), RH_RF95_MAX_MESSAGE_LEN);
+			response_lenght -= RH_RF95_MAX_MESSAGE_LEN;
+			while(response_lenght >= RH_RF95_MAX_MESSAGE_LEN){
+				Serial1.readBytes(responsebuffer, RH_RF95_MAX_MESSAGE_LEN);
+				rf95.send(reinterpret_cast<const uint8_t*>(responsebuffer), RH_RF95_MAX_MESSAGE_LEN);
+				response_lenght -= RH_RF95_MAX_MESSAGE_LEN;
+			}
+			Serial1.readBytes(responsebuffer, response_lenght);
+			rf95.send(reinterpret_cast<const uint8_t*>(responsebuffer), response_lenght);
+		} else {
+			Serial1.readBytes(responsebuffer + 5, response_lenght - 5);
+			rf95.send(reinterpret_cast<const uint8_t*>(responsebuffer), response_lenght);
+		}
+
 	}
+
+	digitalWrite(LED, HIGH);
 
 }

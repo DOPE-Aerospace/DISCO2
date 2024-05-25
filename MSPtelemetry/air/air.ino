@@ -8,6 +8,7 @@
 
 #include "log_lib.h"
 #include "config.h"
+#include "MSP_forwarder.h"
 
 #define RFM95_CS 7
 #define RFM95_RST 3
@@ -23,8 +24,6 @@ RH_RF95 rf95(RFM95_CS, RFM95_INT);
 
 //Flight Globals
 static const unsigned long FlightBaud = 115200;
-static char requestbuffer[RH_RF95_MAX_MESSAGE_LEN] = {};
-static char responsebuffer[RH_RF95_MAX_MESSAGE_LEN] = {};
 
 //Logger Globals
 MessageLogger info_logger;
@@ -122,7 +121,6 @@ void setup()
 			abort_blink(4);
 		}
 	}
-	responsebuffer[0] = '$';
 	
 	//===========
 	//   Misc
@@ -138,63 +136,9 @@ void loop()
 	rf95.waitAvailable();
 	digitalWrite(LED, LOW);
 
-	uint8_t received = {};
-	do {
-		rf95.recv(reinterpret_cast<uint8_t*>(requestbuffer), &received);
-		Serial1.write(requestbuffer, received);
-	} while(received == RH_RF95_MAX_MESSAGE_LEN);
+	MSP_LORA_to_UART(rf95, Serial1);
 
-	int first_byte = {};
-	while((first_byte = Serial1.read()) != '$'){
-		if(first_byte == -1){
-			digitalWrite(LED, LOW);
-			return;
-		}
-	}
-
-	if((responsebuffer[1] = Serial1.read()) == 'X'){
-
-		Serial1.readBytes(responsebuffer + 2, 6);
-		int response_lenght = 8 + responsebuffer[6] + (responsebuffer[7] * 256) + 1; //+1 per il byte di controllo
-
-		if(response_lenght >= RH_RF95_MAX_MESSAGE_LEN){
-			Serial1.readBytes(responsebuffer + 8, RH_RF95_MAX_MESSAGE_LEN - 8);
-			rf95.send(reinterpret_cast<const uint8_t*>(responsebuffer), RH_RF95_MAX_MESSAGE_LEN);
-			response_lenght -= RH_RF95_MAX_MESSAGE_LEN;
-			while(response_lenght >= RH_RF95_MAX_MESSAGE_LEN){
-				Serial1.readBytes(responsebuffer, RH_RF95_MAX_MESSAGE_LEN);
-				rf95.send(reinterpret_cast<const uint8_t*>(responsebuffer), RH_RF95_MAX_MESSAGE_LEN);
-				response_lenght -= RH_RF95_MAX_MESSAGE_LEN;
-			}
-			Serial1.readBytes(responsebuffer, response_lenght);
-			rf95.send(reinterpret_cast<const uint8_t*>(responsebuffer), response_lenght);
-		} else {
-			Serial1.readBytes(responsebuffer + 8, response_lenght - 8);
-			rf95.send(reinterpret_cast<const uint8_t*>(responsebuffer), response_lenght);
-		}
-
-	} else if(responsebuffer[1] == 'M'){
-
-		Serial1.readBytes(responsebuffer + 2, 3);
-		int response_lenght = 5 + responsebuffer[3] + 1; //+1 per il byte di controllo
-
-		if(response_lenght >= RH_RF95_MAX_MESSAGE_LEN){
-			Serial1.readBytes(responsebuffer + 5, RH_RF95_MAX_MESSAGE_LEN - 5);
-			rf95.send(reinterpret_cast<const uint8_t*>(responsebuffer), RH_RF95_MAX_MESSAGE_LEN);
-			response_lenght -= RH_RF95_MAX_MESSAGE_LEN;
-			while(response_lenght >= RH_RF95_MAX_MESSAGE_LEN){
-				Serial1.readBytes(responsebuffer, RH_RF95_MAX_MESSAGE_LEN);
-				rf95.send(reinterpret_cast<const uint8_t*>(responsebuffer), RH_RF95_MAX_MESSAGE_LEN);
-				response_lenght -= RH_RF95_MAX_MESSAGE_LEN;
-			}
-			Serial1.readBytes(responsebuffer, response_lenght);
-			rf95.send(reinterpret_cast<const uint8_t*>(responsebuffer), response_lenght);
-		} else {
-			Serial1.readBytes(responsebuffer + 5, response_lenght - 5);
-			rf95.send(reinterpret_cast<const uint8_t*>(responsebuffer), response_lenght);
-		}
-
-	}
+	MSP_UART_to_LORA(rf95, Serial1);
 
 	digitalWrite(LED, HIGH);
 

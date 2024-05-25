@@ -2,6 +2,7 @@
 #include <RH_RF95.h>
 
 #include "status_handler.h"
+#include "MSP_forwarder.h"
 
 #define RFM95_CS 4
 #define RFM95_RST 2
@@ -14,9 +15,6 @@ RH_RF95 rf95(RFM95_CS, RFM95_INT);
 
 // Blink on receipt
 #define LED LED_BUILTIN
-
-const char * test_message = "$X<\x00\x05\x00\x00\x00\x84";
-static char responsebuffer[50] = {};
 
 void setup()
 {
@@ -65,19 +63,15 @@ void setup()
 
 void loop()
 {
+	while(!Serial.available());
+	digitalWrite(LED, LOW);
 
-	unsigned long saved_time = millis();
+	MSP_UART_to_LORA(rf95, Serial);
 
-	rf95.send(reinterpret_cast<const uint8_t*>(test_message), 9);
+	if(rf95.waitAvailableTimeout(1000)){
+		MSP_LORA_to_UART(rf95, Serial);
+	}
 
-	rf95.waitAvailableTimeout(1000);
-	digitalWrite(LED_BUILTIN, LOW);
-
-	uint8_t received = {};
-	rf95.recv(reinterpret_cast<uint8_t*>(responsebuffer), &received);
-
-	digitalWrite(LED_BUILTIN, HIGH);
-
-	Serial.println(millis() - saved_time);
+	digitalWrite(LED, HIGH);
 
 }

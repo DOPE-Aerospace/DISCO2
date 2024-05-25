@@ -70,10 +70,10 @@ void loop()
 
 	rf95.send(reinterpret_cast<const uint8_t*>(test_message), 9);
 
-	rf95.waitAvailable();
+	rf95.waitAvailableTimeout(1000);
 	digitalWrite(LED_BUILTIN, LOW);
 
-	uint8_t received = sizeof(responsebuffer);
+	uint8_t received = {};
 	rf95.recv(reinterpret_cast<uint8_t*>(responsebuffer), &received);
 
 	digitalWrite(LED_BUILTIN, HIGH);

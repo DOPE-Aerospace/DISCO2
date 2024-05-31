@@ -15,15 +15,14 @@ void MSP_LORA_to_UART(RH_RF95& in, Stream& out)
 
 void MSP_UART_to_LORA(RH_RF95& out, Stream& in)
 {
-	int first_byte = {};
-	while((first_byte = in.read()) != '$'){
-		if(first_byte == -1){
+	do {
+		if(!in.readBytes(buffer, 1)){
 			return;
 		}
-	}
-	buffer[0] = '$';
+	} while(buffer[0] != '$');
 
-	if((buffer[1] = in.read()) == 'X'){
+	in.readBytes(buffer + 1, 1);
+	if(buffer[1] == 'X'){
 
 		in.readBytes(buffer + 2, 6);
 		int response_lenght = 8 + buffer[6] + (buffer[7] * 256) + 1; //+1 per il byte di controllo

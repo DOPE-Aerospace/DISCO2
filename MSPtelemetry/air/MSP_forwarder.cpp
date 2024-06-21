@@ -9,7 +9,7 @@ void MSP_LORA_to_UART(RH_RF95& in, Stream& out)
 	uint8_t received;
 	do {
 		received = RH_RF95_MAX_MESSAGE_LEN;
-		if(!waitAvailableTimeout(1000)){
+		if(!in.waitAvailableTimeout(1000)){
 			break;
 		}
 		in.recv(reinterpret_cast<uint8_t*>(buffer), &received);
